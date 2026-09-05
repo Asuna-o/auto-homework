@@ -1,0 +1,165 @@
+name: Build WhaleGirl V1.6 APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WhaleGirl V1.6 branch
+        uses: actions/checkout@v4
+        with:
+          repository: Asuna-o/pidforge
+          ref: whalegirl-v16-build
+
+      - name: Reconstruct baseline sources
+        shell: bash
+        run: |
+          cat whalegirl/v08_parts/MainActivity.*.part > whalegirl/app/src/main/java/com/whalegirl/pet/MainActivity.java
+          cat whalegirl/v08_parts/PetOverlayService.java.b64.*.part | base64 -d | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
+
+      - name: Apply V0.9 through V1.2 patches
+        shell: bash
+        run: |
+          base64 -d whalegirl/v09_patch.gz.b64 | gunzip > /tmp/v09.patch
+          (cd whalegirl && patch -p1 < /tmp/v09.patch)
+          base64 -d whalegirl/v10_parts/v10.patch.gz.b64 | gunzip > /tmp/v10.patch
+          (cd whalegirl && patch -p1 < /tmp/v10.patch)
+          base64 -d whalegirl/v11_parts/v11.patch.gz.b64 | gunzip > /tmp/v11.patch
+          (cd whalegirl && patch -p1 < /tmp/v11.patch)
+          base64 -d whalegirl/v12_parts/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
+          (cd whalegirl && patch -p1 < /tmp/v12.patch)
+
+      - name: Restore verified legacy render assets
+        shell: bash
+        run: |
+          cat whalegirl/v122_chunks/00.part whalegirl/v122_chunks/01.part whalegirl/v122_chunks/02.part whalegirl/v122_chunks/03.part whalegirl/v122_chunks/04.part > /tmp/whale_girl.b64
+          test "$(wc -c < /tmp/whale_girl.b64)" -eq 10684
+          base64 -d /tmp/whale_girl.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
+          cp whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
+
+      - name: Harden legacy bitmap decode for V1.3 patch compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          p='whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java'
+          s=open(p,encoding='utf-8').read()
+          old='''            sprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            blinkSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);'''
+          new='''            Bitmap decodedSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            Bitmap decodedBlink = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);\n            sprite = decodedSprite == null ? null : decodedSprite.copy(Bitmap.Config.ARGB_8888, false);\n            blinkSprite = decodedBlink == null ? sprite : decodedBlink.copy(Bitmap.Config.ARGB_8888, false);'''
+          assert old in s
+          s=s.replace(old,new,1)
+          old2='''            if (sprite == null) return;'''
+          new2='''            if (sprite == null) {\n                paint.setColor(Color.rgb(92, 149, 226));\n                canvas.drawCircle(getWidth()/2f, getHeight()/2f, dp(30), paint);\n                textPaint.setColor(Color.WHITE);\n                textPaint.setTextSize(dp(12));\n                canvas.drawText("鲸鱼娘资源加载失败", getWidth()/2f, getHeight()/2f + dp(4), textPaint);\n                return;\n            }'''
+          assert old2 in s
+          s=s.replace(old2,new2,1)
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Apply V1.3 patch
+        shell: bash
+        run: |
+          base64 -d whalegirl/v13_parts/v13proc.patch.gz.b64 | gunzip > /tmp/v13.patch
+          (cd whalegirl && patch -p1 < /tmp/v13.patch)
+
+      - name: Install V1.4 multi-pose animation engine
+        shell: bash
+        run: |
+          cat whalegirl/v14_parts/PetOverlayService.00.b64part whalegirl/v14_parts/PetOverlayService.01.b64part > /tmp/v14_service.b64
+          base64 -d /tmp/v14_service.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          cat whalegirl/v14_parts/s96.00.b64part whalegirl/v14_parts/s96.01.b64part whalegirl/v14_parts/s96.02.b64part whalegirl/v14_parts/s96.03.b64part whalegirl/v14_parts/s96.04.b64part whalegirl/v14_parts/s96.05.b64part whalegirl/v14_parts/s96.06.b64part whalegirl/v14_parts/s96.07.b64part > /tmp/v14_sheet.b64
+          base64 -d /tmp/v14_sheet.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png
+
+      - name: Apply V1.5 screen-boundary and stability patch
+        shell: bash
+        run: |
+          base64 -d whalegirl/v15_parts/v15.patch.gz.b64 | gunzip > /tmp/v15.patch
+          (cd whalegirl && patch -p1 < /tmp/v15.patch)
+          python3 - <<'PY'
+          p='whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java'
+          s=open(p,encoding='utf-8').read()
+          s=s.replace('WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE\n                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS',
+                      'WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE')
+          s=s.replace('int[] widths = new int[]{56, 70, 86};', 'int[] widths = new int[]{52, 64, 78};')
+          s=s.replace('int[] heights = new int[]{88, 110, 136};', 'int[] heights = new int[]{82, 102, 124};')
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Install V1.6 design-sheet animation engine
+        shell: bash
+        run: |
+          base64 -d whalegirl/v16_parts/PetOverlayService.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          echo "37badd5894249e693b09516124868da29f595297842f70a9df357e3041e55127  whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java" | sha256sum -c -
+          base64 -d whalegirl/v16_parts/whale_girl_sheet_512.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png
+          echo "7de63ffa5597d1b404760c28ba49a7ee011239d334f72887edb73a049a30899b  whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png" | sha256sum -c -
+          python3 - <<'PY'
+          import struct
+          p='whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png'
+          b=open(p,'rb').read()
+          assert b[:8] == b'\x89PNG\r\n\x1a\n'
+          w,h=struct.unpack('>II',b[16:24])
+          assert (w,h)==(512,512),(w,h)
+          print('V1.6 design atlas OK:',w,h,len(b))
+          PY
+
+      - name: Set V1.6 version
+        shell: bash
+        run: |
+          sed -E -i 's/versionCode = [0-9]+/versionCode = 18/' whalegirl/app/build.gradle.kts
+          sed -E -i 's/versionName = "[^"]+"/versionName = "1.6.0"/' whalegirl/app/build.gradle.kts
+
+      - name: Install stable V1.0+ test signing key
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 -d whalegirl/v10_parts/debug.keystore.b64 > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        working-directory: whalegirl
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify packaged V1.6 atlas
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile, struct
+          apk='whalegirl/app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              names=[n for n in z.namelist() if 'whale_girl_sheet' in n]
+              assert names, 'V1.6 atlas missing from APK'
+              b=z.read(names[0])
+              assert b[:8] == b'\x89PNG\r\n\x1a\n'
+              w,h=struct.unpack('>II',b[16:24])
+              assert (w,h)==(512,512),(w,h)
+              print('PACKAGED V1.6 ATLAS:',names[0],w,h,len(b))
+          PY
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V1.6-smooth-design-apk
+          path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload reconstructed V1.6 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V1.6-source
+          path: whalegirl
+          if-no-files-found: error
