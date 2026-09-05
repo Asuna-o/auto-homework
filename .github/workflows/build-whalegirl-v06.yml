@@ -50,6 +50,12 @@ jobs:
           cd whalegirl
           patch -p1 < /tmp/v12.patch
 
+      - name: Restore verified WhaleGirl PNG assets
+        shell: bash
+        run: |
+          base64 -d whalegirl/v122_parts/whale_girl.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
+          base64 -d whalegirl/v122_parts/whale_girl_blink.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
+
       - name: Verify PNG render assets fully decode
         shell: bash
         run: |
