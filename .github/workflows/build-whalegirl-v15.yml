@@ -22,7 +22,7 @@ jobs:
           cat whalegirl/v08_parts/PetOverlayService.java.b64.*.part | base64 -d | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
           base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
 
-      - name: Apply V0.9 through V1.3 patches
+      - name: Apply V0.9 through V1.2 patches
         shell: bash
         run: |
           base64 -d whalegirl/v09_patch.gz.b64 | gunzip > /tmp/v09.patch
@@ -33,6 +33,35 @@ jobs:
           (cd whalegirl && patch -p1 < /tmp/v11.patch)
           base64 -d whalegirl/v12_parts/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
           (cd whalegirl && patch -p1 < /tmp/v12.patch)
+
+      - name: Restore verified legacy render assets
+        shell: bash
+        run: |
+          cat whalegirl/v122_chunks/00.part whalegirl/v122_chunks/01.part whalegirl/v122_chunks/02.part whalegirl/v122_chunks/03.part whalegirl/v122_chunks/04.part > /tmp/whale_girl.b64
+          test "$(wc -c < /tmp/whale_girl.b64)" -eq 10684
+          base64 -d /tmp/whale_girl.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
+          cp whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
+
+      - name: Harden legacy bitmap decode for V1.3 patch compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          p='whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java'
+          s=open(p,encoding='utf-8').read()
+          old='''            sprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            blinkSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);'''
+          new='''            Bitmap decodedSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            Bitmap decodedBlink = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);\n            sprite = decodedSprite == null ? null : decodedSprite.copy(Bitmap.Config.ARGB_8888, false);\n            blinkSprite = decodedBlink == null ? sprite : decodedBlink.copy(Bitmap.Config.ARGB_8888, false);'''
+          assert old in s
+          s=s.replace(old,new,1)
+          old2='''            if (sprite == null) return;'''
+          new2='''            if (sprite == null) {\n                paint.setColor(Color.rgb(92, 149, 226));\n                canvas.drawCircle(getWidth()/2f, getHeight()/2f, dp(30), paint);\n                textPaint.setColor(Color.WHITE);\n                textPaint.setTextSize(dp(12));\n                canvas.drawText("鲸鱼娘资源加载失败", getWidth()/2f, getHeight()/2f + dp(4), textPaint);\n                return;\n            }'''
+          assert old2 in s
+          s=s.replace(old2,new2,1)
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Apply V1.3 patch
+        shell: bash
+        run: |
           base64 -d whalegirl/v13_parts/v13proc.patch.gz.b64 | gunzip > /tmp/v13.patch
           (cd whalegirl && patch -p1 < /tmp/v13.patch)
 
@@ -40,8 +69,11 @@ jobs:
         shell: bash
         run: |
           cat whalegirl/v14_parts/PetOverlayService.00.b64part whalegirl/v14_parts/PetOverlayService.01.b64part > /tmp/v14_service.b64
+          test "$(wc -c < /tmp/v14_service.b64)" -eq 24200
           base64 -d /tmp/v14_service.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          echo "06158228ddadd0cc8516aee37424a0e7a3c2a0e3be62deb71ccba9f0582e5c54  whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java" | sha256sum -c -
           cat whalegirl/v14_parts/s96.00.b64part whalegirl/v14_parts/s96.01.b64part whalegirl/v14_parts/s96.02.b64part whalegirl/v14_parts/s96.03.b64part whalegirl/v14_parts/s96.04.b64part whalegirl/v14_parts/s96.05.b64part whalegirl/v14_parts/s96.06.b64part whalegirl/v14_parts/s96.07.b64part > /tmp/v14_sheet.b64
+          test "$(wc -c < /tmp/v14_sheet.b64)" -eq 29204
           base64 -d /tmp/v14_sheet.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png
 
       - name: Apply V1.5 stability and screen-boundary patch
