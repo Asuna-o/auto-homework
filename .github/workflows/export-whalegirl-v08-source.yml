@@ -1,0 +1,31 @@
+name: Export WhaleGirl V0.8 Source
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WhaleGirl V0.8 build branch
+        uses: actions/checkout@v4
+        with:
+          repository: Asuna-o/pidforge
+          ref: whalegirl-v08-build
+
+      - name: Reconstruct Java sources
+        shell: bash
+        run: |
+          cat whalegirl/v08_parts/MainActivity.*.part > whalegirl/app/src/main/java/com/whalegirl/pet/MainActivity.java
+          cat whalegirl/v08_parts/PetOverlayService.java.b64.*.part | base64 -d | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
+          cp -r whalegirl WhaleGirlV08Reconstructed
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V0.8-reconstructed-source
+          path: WhaleGirlV08Reconstructed
+          if-no-files-found: error
