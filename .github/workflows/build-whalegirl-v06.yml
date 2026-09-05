@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           cat whalegirl/v06_parts/MainActivity.*.part > whalegirl/app/src/main/java/com/whalegirl/pet/MainActivity.java
-          base64 -d whalegirl/v06_parts/PetOverlayService.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          cat whalegirl/v06_parts/PetOverlayService.b64.*.part | base64 -d | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
           base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
 
       - name: Set up Java 17
