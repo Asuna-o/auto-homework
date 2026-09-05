@@ -1,0 +1,139 @@
+name: Build WhaleGirl V1.5 APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WhaleGirl V1.5 branch
+        uses: actions/checkout@v4
+        with:
+          repository: Asuna-o/pidforge
+          ref: whalegirl-v15-build
+
+      - name: Reconstruct baseline sources
+        shell: bash
+        run: |
+          cat whalegirl/v08_parts/MainActivity.*.part > whalegirl/app/src/main/java/com/whalegirl/pet/MainActivity.java
+          cat whalegirl/v08_parts/PetOverlayService.java.b64.*.part | base64 -d | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
+
+      - name: Apply V0.9 through V1.3 patches
+        shell: bash
+        run: |
+          base64 -d whalegirl/v09_patch.gz.b64 | gunzip > /tmp/v09.patch
+          (cd whalegirl && patch -p1 < /tmp/v09.patch)
+          base64 -d whalegirl/v10_parts/v10.patch.gz.b64 | gunzip > /tmp/v10.patch
+          (cd whalegirl && patch -p1 < /tmp/v10.patch)
+          base64 -d whalegirl/v11_parts/v11.patch.gz.b64 | gunzip > /tmp/v11.patch
+          (cd whalegirl && patch -p1 < /tmp/v11.patch)
+          base64 -d whalegirl/v12_parts/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
+          (cd whalegirl && patch -p1 < /tmp/v12.patch)
+          base64 -d whalegirl/v13_parts/v13proc.patch.gz.b64 | gunzip > /tmp/v13.patch
+          (cd whalegirl && patch -p1 < /tmp/v13.patch)
+
+      - name: Install V1.4 multi-pose animation engine
+        shell: bash
+        run: |
+          cat whalegirl/v14_parts/PetOverlayService.00.b64part whalegirl/v14_parts/PetOverlayService.01.b64part > /tmp/v14_service.b64
+          base64 -d /tmp/v14_service.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          cat whalegirl/v14_parts/s96.00.b64part whalegirl/v14_parts/s96.01.b64part whalegirl/v14_parts/s96.02.b64part whalegirl/v14_parts/s96.03.b64part whalegirl/v14_parts/s96.04.b64part whalegirl/v14_parts/s96.05.b64part whalegirl/v14_parts/s96.06.b64part whalegirl/v14_parts/s96.07.b64part > /tmp/v14_sheet.b64
+          base64 -d /tmp/v14_sheet.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png
+
+      - name: Apply V1.5 stability and screen-boundary patch
+        shell: bash
+        run: |
+          base64 -d whalegirl/v15_parts/v15.patch.gz.b64 | gunzip > /tmp/v15.patch
+          (cd whalegirl && patch -p1 < /tmp/v15.patch)
+          python3 - <<'PY'
+          p='whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java'
+          s=open(p,encoding='utf-8').read()
+          s=s.replace('WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE\n                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS',
+                      'WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE')
+          s=s.replace('int[] widths = new int[]{56, 70, 86};', 'int[] widths = new int[]{52, 64, 78};')
+          s=s.replace('int[] heights = new int[]{88, 110, 136};', 'int[] heights = new int[]{82, 102, 124};')
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Rebuild sprite sheet at 1024px with stronger color and sharpness
+        shell: bash
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageEnhance, ImageFilter
+          p='whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png'
+          im=Image.open(p).convert('RGBA')
+          assert im.size == (384,384), im.size
+          im=im.resize((1024,1024), Image.Resampling.LANCZOS)
+          im=ImageEnhance.Color(im).enhance(1.28)
+          im=ImageEnhance.Contrast(im).enhance(1.12)
+          im=ImageEnhance.Brightness(im).enhance(0.96)
+          im=im.filter(ImageFilter.UnsharpMask(radius=1.25, percent=135, threshold=2))
+          im.save(p, 'PNG', optimize=True, compress_level=9)
+          check=Image.open(p)
+          assert check.size == (1024,1024)
+          print('V1.5 sprite sheet:', check.size, check.mode)
+          PY
+
+      - name: Set V1.5 version
+        shell: bash
+        run: |
+          sed -E -i 's/versionCode = [0-9]+/versionCode = 17/' whalegirl/app/build.gradle.kts
+          sed -E -i 's/versionName = "[^"]+"/versionName = "1.5.0"/' whalegirl/app/build.gradle.kts
+
+      - name: Install stable V1.0+ test signing key
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 -d whalegirl/v10_parts/debug.keystore.b64 > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        working-directory: whalegirl
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify packaged high-resolution asset
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile, struct
+          apk='whalegirl/app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              names=[n for n in z.namelist() if 'whale_girl_sheet' in n]
+              assert names, 'sprite sheet missing from APK'
+              b=z.read(names[0])
+              assert b[:8] == b'\x89PNG\r\n\x1a\n'
+              w,h=struct.unpack('>II',b[16:24])
+              assert (w,h)==(1024,1024),(w,h)
+              print('PACKAGED SPRITE:',names[0],w,h,len(b))
+          PY
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V1.5-stable-hd-apk
+          path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload reconstructed V1.5 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V1.5-source
+          path: whalegirl
+          if-no-files-found: error
