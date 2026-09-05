@@ -1,0 +1,1 @@
+trigger WhaleGirl V0.6 APK build
