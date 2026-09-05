@@ -53,8 +53,10 @@ jobs:
       - name: Restore verified WhaleGirl PNG assets
         shell: bash
         run: |
-          base64 -d whalegirl/v122_parts/whale_girl.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
-          base64 -d whalegirl/v122_parts/whale_girl_blink.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
+          cat whalegirl/v122_chunks/00.part whalegirl/v122_chunks/01.part whalegirl/v122_chunks/02.part whalegirl/v122_chunks/03.part whalegirl/v122_chunks/04.part > /tmp/whale_girl.b64
+          test "$(wc -c < /tmp/whale_girl.b64)" -eq 10684
+          base64 -d /tmp/whale_girl.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
+          cp whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
 
       - name: Verify PNG render assets fully decode
         shell: bash
