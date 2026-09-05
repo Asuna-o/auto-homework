@@ -1,1 +1,1 @@
-trigger WhaleGirl V0.6 APK build
+trigger WhaleGirl V0.6 APK build - attempt 2
