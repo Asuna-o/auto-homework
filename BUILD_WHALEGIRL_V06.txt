@@ -1,1 +1,1 @@
-trigger WhaleGirl V0.6 APK build - attempt 2
+trigger WhaleGirl V1.2 UI safe-area rebuild
