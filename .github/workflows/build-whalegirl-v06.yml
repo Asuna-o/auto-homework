@@ -1,4 +1,4 @@
-name: Build WhaleGirl V1.3 APK
+name: Build WhaleGirl V1.4 APK
 
 on:
   push:
@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout WhaleGirl V1.3 build branch
+      - name: Checkout WhaleGirl V1.4 build branch
         uses: actions/checkout@v4
         with:
           repository: Asuna-o/pidforge
-          ref: whalegirl-v13-build
+          ref: whalegirl-v14-build
 
       - name: Reconstruct V0.8 baseline sources
         shell: bash
@@ -50,7 +50,7 @@ jobs:
           cd whalegirl
           patch -p1 < /tmp/v12.patch
 
-      - name: Restore verified WhaleGirl PNG assets
+      - name: Restore verified legacy render assets
         shell: bash
         run: |
           cat whalegirl/v122_chunks/00.part whalegirl/v122_chunks/01.part whalegirl/v122_chunks/02.part whalegirl/v122_chunks/03.part whalegirl/v122_chunks/04.part > /tmp/whale_girl.b64
@@ -58,36 +58,7 @@ jobs:
           base64 -d /tmp/whale_girl.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
           cp whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
 
-      - name: Verify PNG render assets fully decode
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import struct, zlib, binascii
-          paths = [
-              'whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png',
-              'whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png',
-          ]
-          for p in paths:
-              b = open(p,'rb').read()
-              assert b[:8] == b'\x89PNG\r\n\x1a\n', p
-              pos = 8; idat = bytearray(); w = h = None; seen_iend = False
-              while pos + 12 <= len(b):
-                  n = struct.unpack('>I', b[pos:pos+4])[0]
-                  typ = b[pos+4:pos+8]
-                  data = b[pos+8:pos+8+n]
-                  crc = struct.unpack('>I', b[pos+8+n:pos+12+n])[0]
-                  assert (binascii.crc32(typ + data) & 0xffffffff) == crc, (p, typ)
-                  if typ == b'IHDR': w,h = struct.unpack('>II', data[:8])
-                  elif typ == b'IDAT': idat += data
-                  elif typ == b'IEND': seen_iend = True; pos += 12+n; break
-                  pos += 12+n
-              assert seen_iend and w >= 100 and h >= 140 and len(idat) > 1000, (p,w,h,len(idat))
-              raw = zlib.decompress(bytes(idat))
-              assert len(raw) > w*h, (p,len(raw))
-              print('VALID PNG:', p, w, h, len(b), 'decoded bytes', len(raw))
-          PY
-
-      - name: Harden Android bitmap decode
+      - name: Harden legacy Android bitmap decode
         shell: bash
         run: |
           python3 - <<'PY'
@@ -104,18 +75,44 @@ jobs:
           open(p,'w',encoding='utf-8').write(s)
           PY
 
-      - name: Apply V1.3 dynamic animation patch
+      - name: Apply V1.3 product changes
         shell: bash
         run: |
           base64 -d whalegirl/v13_parts/v13proc.patch.gz.b64 | gunzip > /tmp/v13.patch
           cd whalegirl
           patch -p1 < /tmp/v13.patch
 
-      - name: Set V1.3 version
+      - name: Install V1.4 real pose animation engine
         shell: bash
         run: |
-          sed -i 's/versionCode = 12/versionCode = 15/' whalegirl/app/build.gradle.kts
-          sed -i 's/versionName = "1.2.0"/versionName = "1.3.0"/' whalegirl/app/build.gradle.kts
+          cat whalegirl/v14_parts/PetOverlayService.00.b64part whalegirl/v14_parts/PetOverlayService.01.b64part > /tmp/v14_service.b64
+          test "$(wc -c < /tmp/v14_service.b64)" -eq 24200
+          base64 -d /tmp/v14_service.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          echo "06158228ddadd0cc8516aee37424a0e7a3c2a0e3be62deb71ccba9f0582e5c54  whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java" | sha256sum -c -
+
+      - name: Install V1.4 multi-pose sprite sheet
+        shell: bash
+        run: |
+          cat whalegirl/v14_parts/s96.00.b64part whalegirl/v14_parts/s96.01.b64part whalegirl/v14_parts/s96.02.b64part whalegirl/v14_parts/s96.03.b64part whalegirl/v14_parts/s96.04.b64part whalegirl/v14_parts/s96.05.b64part whalegirl/v14_parts/s96.06.b64part whalegirl/v14_parts/s96.07.b64part > /tmp/v14_sheet.b64
+          test "$(wc -c < /tmp/v14_sheet.b64)" -eq 29204
+          base64 -d /tmp/v14_sheet.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png
+          test "$(wc -c < whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png)" -eq 21901
+          echo "0a064882b81b7cc09b3ccf1d5b09d2c50e3a20d16a82dd5f24dc5ae2556573f1  whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png" | sha256sum -c -
+          python3 - <<'PY'
+          import struct
+          p='whalegirl/app/src/main/res/drawable-nodpi/whale_girl_sheet.png'
+          b=open(p,'rb').read()
+          assert b[:8] == b'\x89PNG\r\n\x1a\n'
+          w,h=struct.unpack('>II',b[16:24])
+          assert (w,h)==(384,384),(w,h)
+          print('V1.4 sprite sheet OK:',w,h,len(b))
+          PY
+
+      - name: Set V1.4 version
+        shell: bash
+        run: |
+          sed -E -i 's/versionCode = [0-9]+/versionCode = 16/' whalegirl/app/build.gradle.kts
+          sed -E -i 's/versionName = "[^"]+"/versionName = "1.4.0"/' whalegirl/app/build.gradle.kts
 
       - name: Install stable V1.0+ test signing key
         shell: bash
@@ -143,13 +140,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.3-dynamic-apk
+          name: WhaleGirl-V1.4-real-animation-apk
           path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload reconstructed V1.3 source
+      - name: Upload reconstructed V1.4 source
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.3-source
+          name: WhaleGirl-V1.4-source
           path: whalegirl
           if-no-files-found: error
