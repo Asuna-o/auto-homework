@@ -1,4 +1,4 @@
-name: Build WhaleGirl V1.0 APK
+name: Build WhaleGirl V1.1 APK
 
 on:
   push:
@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout WhaleGirl V1.0 build branch
+      - name: Checkout WhaleGirl V1.1 build branch
         uses: actions/checkout@v4
         with:
           repository: Asuna-o/pidforge
-          ref: whalegirl-v10-build
+          ref: whalegirl-v11-build
 
       - name: Reconstruct V0.8 baseline sources
         shell: bash
@@ -36,7 +36,14 @@ jobs:
           cd whalegirl
           patch -p1 < /tmp/v10.patch
 
-      - name: Install stable V1.0 test signing key
+      - name: Apply V1.1 stability and reminders patch
+        shell: bash
+        run: |
+          base64 -d whalegirl/v11_parts/v11.patch.gz.b64 | gunzip > /tmp/v11.patch
+          cd whalegirl
+          patch -p1 < /tmp/v11.patch
+
+      - name: Install stable V1.0+ test signing key
         shell: bash
         run: |
           mkdir -p "$HOME/.android"
@@ -62,13 +69,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.0-debug-apk
+          name: WhaleGirl-V1.1-debug-apk
           path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload reconstructed V1.0 source
+      - name: Upload reconstructed V1.1 source
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.0-source
+          name: WhaleGirl-V1.1-source
           path: whalegirl
           if-no-files-found: error
