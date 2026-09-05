@@ -1,4 +1,4 @@
-name: Build WhaleGirl V1.2.1 APK
+name: Build WhaleGirl V1.2.2 APK
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout WhaleGirl V1.2.1 build branch
+      - name: Checkout WhaleGirl V1.2.2 build branch
         uses: actions/checkout@v4
         with:
           repository: Asuna-o/pidforge
@@ -50,23 +50,53 @@ jobs:
           cd whalegirl
           patch -p1 < /tmp/v12.patch
 
-      - name: Restore intact WhaleGirl render assets
+      - name: Verify PNG render assets fully decode
         shell: bash
         run: |
-          base64 -d whalegirl/v121_parts/whale_girl.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
-          base64 -d whalegirl/v121_parts/whale_girl_blink.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
-          sed -i 's/versionCode = 12/versionCode = 13/' whalegirl/app/build.gradle.kts
-          sed -i 's/versionName = "1.2.0"/versionName = "1.2.1"/' whalegirl/app/build.gradle.kts
           python3 - <<'PY'
-          import os, struct
-          for p in ['whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png','whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png']:
-              b=open(p,'rb').read()
+          import struct, zlib, binascii
+          paths = [
+              'whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png',
+              'whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png',
+          ]
+          for p in paths:
+              b = open(p,'rb').read()
               assert b[:8] == b'\x89PNG\r\n\x1a\n', p
-              w,h=struct.unpack('>II', b[16:24])
-              assert (w,h)==(112,149), (p,w,h)
-              assert len(b)>4000, (p,len(b))
-              print(p, w, h, len(b))
+              pos = 8; idat = bytearray(); w = h = None; seen_iend = False
+              while pos + 12 <= len(b):
+                  n = struct.unpack('>I', b[pos:pos+4])[0]
+                  typ = b[pos+4:pos+8]
+                  data = b[pos+8:pos+8+n]
+                  crc = struct.unpack('>I', b[pos+8+n:pos+12+n])[0]
+                  assert (binascii.crc32(typ + data) & 0xffffffff) == crc, (p, typ)
+                  if typ == b'IHDR': w,h = struct.unpack('>II', data[:8])
+                  elif typ == b'IDAT': idat += data
+                  elif typ == b'IEND': seen_iend = True; pos += 12+n; break
+                  pos += 12+n
+              assert seen_iend and w >= 100 and h >= 140 and len(idat) > 1000, (p,w,h,len(idat))
+              raw = zlib.decompress(bytes(idat))
+              assert len(raw) > w*h, (p,len(raw))
+              print('VALID PNG:', p, w, h, len(b), 'decoded bytes', len(raw))
           PY
+
+      - name: Harden Android bitmap decode and bump version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          p='whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java'
+          s=open(p,encoding='utf-8').read()
+          old='''            sprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            blinkSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);'''
+          new='''            Bitmap decodedSprite = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl);\n            Bitmap decodedBlink = BitmapFactory.decodeResource(getResources(), R.drawable.whale_girl_blink);\n            sprite = decodedSprite == null ? null : decodedSprite.copy(Bitmap.Config.ARGB_8888, false);\n            blinkSprite = decodedBlink == null ? sprite : decodedBlink.copy(Bitmap.Config.ARGB_8888, false);'''
+          assert old in s
+          s=s.replace(old,new,1)
+          old2='''            if (sprite == null) return;'''
+          new2='''            if (sprite == null) {\n                paint.setColor(Color.rgb(92, 149, 226));\n                canvas.drawCircle(getWidth()/2f, getHeight()/2f, dp(30), paint);\n                textPaint.setColor(Color.WHITE);\n                textPaint.setTextSize(dp(12));\n                canvas.drawText("鲸鱼娘资源加载失败", getWidth()/2f, getHeight()/2f + dp(4), textPaint);\n                return;\n            }'''
+          assert old2 in s
+          s=s.replace(old2,new2,1)
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+          sed -i 's/versionCode = 12/versionCode = 14/' whalegirl/app/build.gradle.kts
+          sed -i 's/versionName = "1.2.0"/versionName = "1.2.2"/' whalegirl/app/build.gradle.kts
 
       - name: Install stable V1.0+ test signing key
         shell: bash
@@ -94,13 +124,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.2.1-render-fix-apk
+          name: WhaleGirl-V1.2.2-verified-render-apk
           path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload reconstructed V1.2.1 source
+      - name: Upload reconstructed V1.2.2 source
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.2.1-source
+          name: WhaleGirl-V1.2.2-source
           path: whalegirl
           if-no-files-found: error
