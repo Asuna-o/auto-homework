@@ -1,4 +1,4 @@
-name: Build WhaleGirl V1.2 APK
+name: Build WhaleGirl V1.2.1 APK
 
 on:
   push:
@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout WhaleGirl V1.2 build branch
+      - name: Checkout WhaleGirl V1.2.1 build branch
         uses: actions/checkout@v4
         with:
           repository: Asuna-o/pidforge
-          ref: whalegirl-v12-build
+          ref: whalegirl-v121-build
 
       - name: Reconstruct V0.8 baseline sources
         shell: bash
@@ -50,6 +50,24 @@ jobs:
           cd whalegirl
           patch -p1 < /tmp/v12.patch
 
+      - name: Restore intact WhaleGirl render assets
+        shell: bash
+        run: |
+          base64 -d whalegirl/v121_parts/whale_girl.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png
+          base64 -d whalegirl/v121_parts/whale_girl_blink.png.b64 > whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png
+          sed -i 's/versionCode = 12/versionCode = 13/' whalegirl/app/build.gradle.kts
+          sed -i 's/versionName = "1.2.0"/versionName = "1.2.1"/' whalegirl/app/build.gradle.kts
+          python3 - <<'PY'
+          import os, struct
+          for p in ['whalegirl/app/src/main/res/drawable-nodpi/whale_girl.png','whalegirl/app/src/main/res/drawable-nodpi/whale_girl_blink.png']:
+              b=open(p,'rb').read()
+              assert b[:8] == b'\x89PNG\r\n\x1a\n', p
+              w,h=struct.unpack('>II', b[16:24])
+              assert (w,h)==(112,149), (p,w,h)
+              assert len(b)>4000, (p,len(b))
+              print(p, w, h, len(b))
+          PY
+
       - name: Install stable V1.0+ test signing key
         shell: bash
         run: |
@@ -76,13 +94,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.2-debug-apk
+          name: WhaleGirl-V1.2.1-render-fix-apk
           path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload reconstructed V1.2 source
+      - name: Upload reconstructed V1.2.1 source
         uses: actions/upload-artifact@v4
         with:
-          name: WhaleGirl-V1.2-source
+          name: WhaleGirl-V1.2.1-source
           path: whalegirl
           if-no-files-found: error
