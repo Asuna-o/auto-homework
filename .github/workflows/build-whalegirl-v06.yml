@@ -1,0 +1,45 @@
+name: Build WhaleGirl V0.6 APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WhaleGirl build branch
+        uses: actions/checkout@v4
+        with:
+          repository: Asuna-o/pidforge
+          ref: whalegirl-apk-build
+
+      - name: Reconstruct V0.6 Java sources
+        shell: bash
+        run: |
+          cat whalegirl/v06_parts/MainActivity.*.part > whalegirl/app/src/main/java/com/whalegirl/pet/MainActivity.java
+          base64 -d whalegirl/v06_parts/PetOverlayService.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/PetOverlayService.java
+          base64 -d whalegirl/v06_parts/ReminderReceiver.java.gz.b64 | gunzip > whalegirl/app/src/main/java/com/whalegirl/pet/ReminderReceiver.java
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        working-directory: whalegirl
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleGirl-V0.6-debug-apk
+          path: whalegirl/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
